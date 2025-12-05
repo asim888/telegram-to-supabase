@@ -1,0 +1,16 @@
+# Environment variables - Contains secrets, should NEVER be committed.
+.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+venv/
+.venv/
+
+# IDE configuration
+.vscode/
+.idea/
