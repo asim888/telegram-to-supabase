@@ -1,5 +1,4 @@
-python-telegram-bot
-python-dotenv
-supabase
-httpx
-
+python-telegram-bot==21.2
+supabase==2.5.0
+httpx==0.27.0
+python-dotenv==1.0.1
