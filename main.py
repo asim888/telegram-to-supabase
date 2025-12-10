@@ -1,157 +1,84 @@
+# legacy_bot.py - Using older stable version
 import os
 import logging
-import asyncio
 from datetime import datetime
 from supabase import create_client
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# OLDER python-telegram-bot API (v13.15)
+from telegram.ext import Updater, MessageHandler, Filters
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get credentials
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 
 if not TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN not found")
     exit(1)
 
-# Initialize Supabase
+# Supabase
 supabase = None
-if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+if SUPABASE_URL and SUPABASE_KEY:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         logger.info("✅ Supabase connected")
     except Exception as e:
-        logger.error(f"❌ Supabase connection failed: {e}")
+        logger.error(f"❌ Supabase error: {e}")
 else:
     logger.warning("⚠️ Supabase credentials missing")
 
-# ==================== SYNC FUNCTIONS ====================
-
-def save_to_supabase(post_data):
-    """Save post to Supabase"""
-    if not supabase:
-        logger.error("❌ Supabase not configured")
-        return False
-    
+def save_post(bot, update):
+    """Handle channel posts"""
     try:
-        # Check for duplicate
-        if post_data.get('telegram_message_id') and post_data.get('telegram_channel_id'):
-            response = supabase.table('telegram_channel_posts') \
-                .select('id') \
-                .eq('telegram_message_id', post_data['telegram_message_id']) \
-                .eq('telegram_channel_id', post_data['telegram_channel_id']) \
-                .execute()
-            
-            if response.data and len(response.data) > 0:
-                logger.info(f"⚠️ Post {post_data['telegram_message_id']} already exists")
-                return True
-        
-        # Insert new post
-        response = supabase.table('telegram_channel_posts').insert(post_data).execute()
-        
-        if response.data:
-            logger.info(f"✅ Saved post {post_data.get('telegram_message_id')}")
-            return True
-        return False
-    except Exception as e:
-        logger.error(f"❌ Database error: {e}")
-        return False
-
-# ==================== ASYNC HANDLERS ====================
-
-async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle Telegram channel posts"""
-    try:
+        # In older API, channel_post is in update
         post = update.channel_post
         if not post:
             return
         
-        chat = update.effective_chat
+        content = post.text or post.caption or ""
+        chat = post.chat
         
-        # Extract data
-        content = post.text or post.caption or "[Media post]"
-        
-        # Prepare post data
         post_data = {
             'message': content[:5000],
             'telegram_message_id': str(post.message_id),
             'telegram_channel_id': str(chat.id),
-            'date_posted': datetime.fromtimestamp(post.date).isoformat(),
-            'created_at': datetime.utcnow().isoformat(),
-            'views': getattr(post, 'views', 0) or 0
+            'created_at': datetime.utcnow().isoformat()
         }
         
-        # Add media info
-        if post.photo:
-            photo = post.photo[-1]
-            post_data['media_url'] = f"photo_{photo.file_id}"
-            post_data['media_type'] = 'photo'
-        elif post.video:
-            post_data['media_url'] = f"video_{post.video.file_id}"
-            post_data['media_type'] = 'video'
-        elif post.document:
-            post_data['media_url'] = f"document_{post.document.file_id}"
-            post_data['media_type'] = 'document'
-        
-        logger.info(f"📢 Processing post: {post.message_id}")
-        
-        # Save to Supabase
-        saved = save_to_supabase(post_data)
-        
-        if saved:
-            logger.info(f"✅ Successfully saved post {post.message_id}")
-        else:
-            logger.error(f"❌ Failed to save post {post.message_id}")
-            
+        if supabase:
+            response = supabase.table('telegram_channel_posts').insert(post_data).execute()
+            if response.data:
+                logger.info(f"✅ Saved post {post.message_id}")
+    
     except Exception as e:
-        logger.error(f"❌ Error handling post: {e}")
-
-# ==================== ASYNC MAIN ====================
-
-async def main_async():
-    """Async main function"""
-    logger.info("🤖 Starting Telegram Bot...")
-    
-    # Create bot application
-    application = Application.builder().token(TOKEN).build()
-    
-    # Add handler for channel posts
-    application.add_handler(MessageHandler(filters.ChatType.CHANNEL, handle_channel_post))
-    
-    # Get bot info - FIXED: Use await
-    bot = application.bot
-    bot_info = await bot.get_me()  # FIXED: Added await
-    logger.info(f"✅ Bot authenticated as: @{bot_info.username} ({bot_info.id})")
-    
-    logger.info("""
-🚀 Bot is running!
-👉 Add @{} as ADMIN to your Telegram channel
-👉 Post messages in channel to save to Supabase
-    """.format(bot_info.username))
-    
-    # Start the bot
-    await application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=["channel_post", "edited_channel_post"]
-    )
+        logger.error(f"❌ Error: {e}")
 
 def main():
-    """Main wrapper to run async function"""
-    try:
-        # Run the async main function
-        asyncio.run(main_async())
-    except KeyboardInterrupt:
-        logger.info("👋 Bot stopped by user")
-    except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
+    logger.info("🤖 Starting Telegram Bot (Legacy API)...")
+    
+    # Create updater (older API)
+    updater = Updater(TOKEN, use_context=True)
+    
+    # Get bot info (sync in older API)
+    bot = updater.bot
+    bot_info = bot.get_me()  # This works in older API
+    logger.info(f"✅ Bot: @{bot_info.username} (ID: {bot_info.id})")
+    
+    # Add handler
+    dp = updater.dispatcher
+    dp.add_handler(MessageHandler(Filters.chat_type.channel, save_post))
+    
+    logger.info(f"""
+🚀 Bot is running!
+👉 Add @{bot_info.username} as ADMIN to your Telegram channel
+👉 Post messages in channel to save to Supabase
+    """)
+    
+    # Start polling
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
