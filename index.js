@@ -1,3 +1,4 @@
+// index.js on Render
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
@@ -5,47 +6,68 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
-// Supabase client (server-side, use service role key)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Webhook endpoint for Telegram
+// OPTIONAL: lock to one channel (numeric ID like -1001234567890)
+const allowedChannelId = process.env.TELEGRAM_CHANNEL_ID
+  ? Number(process.env.TELEGRAM_CHANNEL_ID)
+  : null;
+
 app.post('/telegram/webhook', async (req, res) => {
   const update = req.body;
 
-  const msg = update.channel_post || update.message;
+  // Only channel posts, ignore private/group
+  const msg = update.channel_post;
   if (!msg) return res.sendStatus(200);
+
+  if (allowedChannelId && msg.chat.id !== allowedChannelId) {
+    return res.sendStatus(200);
+  }
 
   const chat = msg.chat;
   const text = msg.text || msg.caption || '';
   const telegramChatId = chat.id;
-  const channelUsername = chat.username || null;
   const telegramMessageId = msg.message_id;
 
-  const media = {};
-  if (msg.photo) media.photo = msg.photo;
-  if (msg.video) media.video = msg.video;
-  const mediaValue = Object.keys(media).length ? media : null;
+  // Title from first sentence
+  let title = null;
+  if (text) {
+    title = text.split(/[.!?]/)[0];
+    if (title.length > 120) title = title.slice(0, 117) + '...';
+  }
 
-  const { error } = await supabase.from('channel_posts').insert({
+  let media_type = 'text';
+  let media_url = null;
+
+  if (msg.photo && msg.photo.length > 0) {
+    media_type = 'image';
+    // later: download + upload to Supabase Storage → set media_url
+  } else if (msg.video) {
+    media_type = 'video';
+    // later: same idea for video
+  }
+
+  const { error } = await supabase.from('telegram_posts').insert({
+    title,
+    message: text,
+    media_url,
+    media_type,
     telegram_chat_id: telegramChatId,
-    channel_username: channelUsername,
-    telegram_message_id: telegramMessageId,
-    text,
-    media: mediaValue
+    telegram_message_id: telegramMessageId
   });
 
   if (error) {
-    console.error('Supabase insert error:', error);
+    console.error('Supabase insert error (telegram_posts):', error);
   }
 
   return res.sendStatus(200);
 });
 
 app.get('/', (req, res) => {
-  res.send('Telegram → Supabase bot is running');
+  res.send('Telegram channel → Supabase bot is running');
 });
 
 const port = process.env.PORT || 3000;
