@@ -1,4 +1,3 @@
-python-telegram-bot==20.3
-httpx==0.27.0
-python-dotenv==1.0.1
-supabase==X.X.X  # your supabase client version
+python-telegram-bot==13.15  # OLDER stable version
+supabase==2.15.0
+python-dotenv==1.0.0
