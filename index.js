@@ -5,7 +5,7 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
-// Log Supabase env to be sure we hit the right project
+// DEBUG: check envs
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
 console.log(
   'SERVICE_ROLE_KEY present:',
@@ -17,14 +17,36 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// For now: NO TELEGRAM_CHANNEL_ID filter (to avoid silently ignoring posts)
-// We'll add it back once it's working.
+// 1) SIMPLE TEST: insert a dummy row by opening /test-insert in browser
+app.get('/test-insert', async (req, res) => {
+  console.log('HIT /test-insert – inserting test row');
 
+  const { error } = await supabase.from('telegram_posts').insert({
+    title: 'Test insert from /test-insert',
+    message: 'If you see this in Supabase, Supabase connection is OK.',
+    media_url: null,
+    media_type: 'text',
+    telegram_chat_id: 0,
+    telegram_message_id: 0
+  });
+
+  if (error) {
+    console.error('Supabase insert error (test-insert):', error);
+    return res
+      .status(500)
+      .json({ ok: false, error: error.message || 'Insert failed' });
+  }
+
+  console.log('Test row inserted successfully');
+  return res.json({ ok: true });
+});
+
+// 2) REAL TELEGRAM WEBHOOK
 app.post('/telegram/webhook', async (req, res) => {
   const update = req.body;
   console.log('Received update:', JSON.stringify(update, null, 2));
 
-  // For debugging: accept both channel_post and normal message
+  // For now, accept both channel_post and message to be sure we see something
   const msg = update.channel_post || update.message;
   if (!msg) {
     console.log('No channel_post or message in update, ignoring');
