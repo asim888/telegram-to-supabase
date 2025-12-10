@@ -15,11 +15,8 @@ const supabase = createClient(
 app.post('/telegram/webhook', async (req, res) => {
   const update = req.body;
 
-  // Channel posts come in update.channel_post
   const msg = update.channel_post || update.message;
-  if (!msg) {
-    return res.sendStatus(200);
-  }
+  if (!msg) return res.sendStatus(200);
 
   const chat = msg.chat;
   const text = msg.text || msg.caption || '';
@@ -44,15 +41,13 @@ app.post('/telegram/webhook', async (req, res) => {
     console.error('Supabase insert error:', error);
   }
 
-  return res.sendStatus(200); // Always 200 so Telegram is happy
+  return res.sendStatus(200);
 });
 
-// Health check
 app.get('/', (req, res) => {
   res.send('Telegram → Supabase bot is running');
 });
 
-// IMPORTANT: use PORT from environment (Render sets this)
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
